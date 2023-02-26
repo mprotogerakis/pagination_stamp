@@ -19,4 +19,7 @@ and an ini file pagination.ini with the following content:
 The script will go through all the files and 
   - set file creation dates according to the date in the filename (if configured via mac_set_file_creation_dates)
   - set macos tags to match the tags in the file name (if configured via macos_tags)
-  - add 
+  - add a pagination number to the filename if it matches the regex_pagination.
+      - add this spagination number to the first page if configured via stamp_file_counter
+      - add the filename to the first page if configured via stamp_file_name
+  - create an excel list of the paginated files (excel_filename) in the directory if configured via create_excel
