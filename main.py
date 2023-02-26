@@ -1,4 +1,3 @@
-import os
 import PyPDF2
 import io
 import re
@@ -8,97 +7,157 @@ from reportlab.lib.colors import red
 import os.path
 import os
 import datetime
+import configparser
+from pathlib import Path
+import sys
+import macos_tags
 
-path = "/Users/proto/Dropbox/Familienbereich/_Ablage_Inbox/2023"
+
+def mac_set_file_creation_date(year, month, day, full_filepath):
+    file_date_to_be_set = datetime.datetime(year, month, day, 0, 0, 0)
+    os.system('SetFile -d "{}" {}'.format(file_date_to_be_set.strftime('%m/%d/%Y %H:%M:%S'), full_filepath))
+
+
+def create_stamp_page_filename(text):
+    local_packet = io.BytesIO()
+    local_can = canvas.Canvas(local_packet, pagesize=A4)
+    local_can.setFont("Helvetica", 8)
+    local_can.setFillColor(red)
+    local_can.drawString(10, 10, text)
+    local_can.save()
+    local_new_pdf_page = PyPDF2.PdfReader(local_packet)
+    return local_new_pdf_page
+
+
+def create_stamp_page_file_counter(text):
+    local_packet = io.BytesIO()
+    local_can = canvas.Canvas(local_packet, pagesize=A4)
+    local_can.setFont("Helvetica", 14)
+    local_can.setFillColor(red)
+    local_can.drawString(450, 800, text)
+    local_can.save()
+    local_new_pdf_page = PyPDF2.PdfReader(local_packet)
+    return local_new_pdf_page
 
 
 def remove_extension(file_name):
     return file_name.rsplit('.', 1)[0]
 
-file_counter = 0
 
-#find out maximum used file_counter so far in this directory
+def find_max_pagination_number(local_path):
+    # find out maximum used file_counter so far in this directory
+    global filename
+    local_file_counter = 0
+    for filename in os.listdir(local_path):
+        if filename.endswith(".pdf"):
+            local_pattern = re.compile(r'(\d+)#_(\d{4})-(\d{2})-(\d{2})--.*')
+            # those have already been processed
+            local_match = re.search(local_pattern, filename)
+            if local_match:
+                number = int(local_match.group(1))
+                if number > local_file_counter:
+                    local_file_counter = number
+    if local_file_counter == 0:
+        local_file_counter = int(config['directory']['file_counter_start'])
+    local_file_counter = local_file_counter + 1
+    return local_file_counter
+
+
+if not (len(sys.argv) == 2):
+    raise Exception("Please provide a directory path as a command line argument.")
+
+path = sys.argv[1]
+
+my_dir = Path(path)
+if my_dir.is_dir():
+    config_file = path + "/pagination.ini"
+    my_config_file = Path(config_file)
+    if not my_config_file.is_file():
+        raise Exception("Directory does not contain a pagination.ini file.")
+else:
+    raise Exception("Command line argument is not a directory.")
+
+config = configparser.ConfigParser()
+config.read(config_file)
+
+file_counter = find_max_pagination_number(path)
+
+
+def regex_matches(regex, local_filename):
+    local_pattern = re.compile(regex)
+    # those have already been processed will match
+    return re.search(local_pattern, local_filename)
+
+
 for filename in os.listdir(path):
     if filename.endswith(".pdf"):
-        pattern = re.compile(r'(\d+)#_(\d{4})-(\d{2})-(\d{2})--.*')
-        # those have already been processed
-        match = re.search(pattern, filename)
-        if match:
-            number = int(match.group(1))
-            if number > file_counter:
-                file_counter = number
-if file_counter == 0:
-    file_counter = 20230000
-file_counter = file_counter + 1
-print ("File Counter Start: " + str(file_counter))
-
-# now start processing new files
-for filename in os.listdir(path):
-    if filename.endswith(".pdf"):
-        pattern = re.compile(r'(\d+)#_(\d{4})-(\d{2})-(\d{2})--.*')
-        # those have already been processed will match
-        match = re.search(pattern, filename)
-
-        if match:
+        match_paginated_before = regex_matches(r'(\d+)#_(\d{4})-(\d{2})-(\d{2})--.*', filename)
+        if match_paginated_before:
+            # those have been paginated before
             # re-set the file creation date, do nothing else
-            new_file_date = datetime.datetime(int(match.group(2)), int(match.group(3)), int(match.group(4)), 0, 0, 0)
-            os.system('SetFile -d "{}" {}'.format(new_file_date.strftime('%m/%d/%Y %H:%M:%S'), path + "/" + filename))
+            if config.getboolean('directory', 'mac_set_file_creation_dates'):
+                mac_set_file_creation_date(int(match_paginated_before.group(2)), int(match_paginated_before.group(3)),
+                                           int(match_paginated_before.group(4)), path + "/" + filename)
+        else:
+            # those have not been paginated before
+            match_valid_date = regex_matches(r"(\d{4})-(\d{2})-(\d{2}).*((_rechnung)|(steuer)|(beleg)).*", filename)
+            if match_valid_date:
+                # those have not been paginated before but contain a valid date scheme and one of the terms that
+                # allow  paginating (_rechnung)|(steuer)|(beleg)
+                print("Paginating " + filename)
+                original_pdf_file = open(path + "/" + filename, "rb")
+                original_pdf_reader = PyPDF2.PdfReader(original_pdf_file, strict=False)
+                new_pdf_writer = PyPDF2.PdfWriter()
+                original_page = original_pdf_reader.pages[0]
+                # don't know what that was for...
+                original_page.merge_page(original_pdf_reader.pages[0])
+                original_page.compress_content_streams()
 
-        if not match:
-            pattern = re.compile(r"(\d{4})-(\d{2})-(\d{2}).*((_rechnung)|(steuer)|(beleg)).*")
-            match = re.search(pattern, filename)
-            if match:
-                print("Processing File: " + filename)
-                # re-set the file creation date
-                new_file_date = datetime.datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)), 0, 0,
-                                                  0)
-                os.system(
-                    'SetFile -d "{}" {}'.format(new_file_date.strftime('%m/%d/%Y %H:%M:%S'), path + "/" + filename))
+                # add first stamp to the page
+                if config.getboolean('directory', 'stamp_file_name'):
+                    filename_stamp_pdf_page = create_stamp_page_filename(str(file_counter) + "#_" +
+                                                                         remove_extension(filename) + ".pdf")
+                    original_page.merge_page(filename_stamp_pdf_page.pages[0])
 
-                pdf_file = open(path + "/" + filename, "rb")
-                pdf_reader = PyPDF2.PdfReader(pdf_file, strict=False)
-                pdf_writer = PyPDF2.PdfWriter()
-                page = pdf_reader.pages[0]
-                page.merge_page(pdf_reader.pages[0])
-                page.compress_content_streams()
+                # add second stamp to the page
+                if config.getboolean('directory', 'stamp_file_counter'):
+                    file_counter_stamp_pdf_page = create_stamp_page_file_counter(str(file_counter))
+                    original_page.merge_page(file_counter_stamp_pdf_page.pages[0])
 
-                packet = io.BytesIO()
-                can = canvas.Canvas(packet, pagesize=A4)
-                can.setFont("Helvetica", 8)
-                can.setFillColor(red)
-                can.drawString(10, 10, str(file_counter)+ "#_" + remove_extension(filename)+".pdf")
-                can.save()
-                new_pdf = PyPDF2.PdfReader(packet)
-                page.merge_page(new_pdf.pages[0])
+                # add page to the new pdf
+                new_pdf_writer.add_page(original_page)
 
-                packet = io.BytesIO()
-                can = canvas.Canvas(packet, pagesize=A4)
-                can.setFont("Helvetica", 20)
-                can.setFillColor(red)
-                can.drawString(450, 800, str(file_counter))
-                can.save()
-                new_pdf = PyPDF2.PdfReader(packet)
-                page.merge_page(new_pdf.pages[0])
+                for i in range(1, len(original_pdf_reader.pages)):
+                    # copy all other pages from old pdf to new pdf
+                    original_page = original_pdf_reader.pages[i]
+                    new_pdf_writer.add_page(original_page)
 
-                pdf_writer.add_page(page)
-                for i in range(1, len(pdf_reader.pages)):
-                    page = pdf_reader.pages[i]
-                    pdf_writer.add_page(page)
-                output_file = open(path + "/" + str(file_counter)+ "#_" + remove_extension(filename)+".pdf", "wb")
                 os.remove(path + "/" + filename)
-                pdf_writer.write(output_file)
-                pdf_file.close()
+                output_file = open(path + "/" + str(file_counter) + "#_" + remove_extension(filename) + ".pdf",
+                                   "wb")
+                new_pdf_writer.write(output_file)
+                original_pdf_file.close()
                 output_file.close()
+                if config.getboolean('directory', 'mac_set_file_creation_dates'):
+                    mac_set_file_creation_date(int(match_valid_date.group(1)),
+                                               int(match_valid_date.group(2)),
+                                               int(match_valid_date.group(3)), path + "/" + str(file_counter) +
+                                               "#_" + remove_extension(filename) + ".pdf")
                 file_counter += 1
             else:
-                pattern = re.compile(r"(\d{4})-(\d{2})-(\d{2}).*")
-                match = re.search(pattern, filename)
-                if match:
-                    print("Modifying only creation time of file: " + filename)
+                # process those files that have not been matched before but have a valid date in the filename
+                match_paginated_before = regex_matches(r"(\d{4})-(\d{2})-(\d{2}).*", filename)
+                if match_paginated_before:
                     # re-set the file creation date
-                    new_file_date = datetime.datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)), 0, 0,
-                                                      0)
-                    os.system(
-                        'SetFile -d "{}" {}'.format(new_file_date.strftime('%m/%d/%Y %H:%M:%S'), path + "/" + filename))
-
-print("All PDF files processed!")
+                    if config.getboolean('directory', 'mac_set_file_creation_dates'):
+                        mac_set_file_creation_date(int(match_paginated_before.group(1)),
+                                                   int(match_paginated_before.group(2)),
+                                                   int(match_paginated_before.group(3)), path + "/" + filename)
+for filename in os.listdir(path):
+    if filename.endswith(".pdf"):
+        if config.getboolean('directory', 'macos_tags'):
+            # for all pdf file add macos tags
+            tags = remove_extension(filename).split("__")[1].split("_")
+            macos_tags.remove_all(path + "/" + filename)
+            for tag in tags:
+                macos_tags.add(tag, file=path + "/" + filename)
