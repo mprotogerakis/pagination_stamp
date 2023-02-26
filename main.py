@@ -1,16 +1,18 @@
 import PyPDF2
 import io
-import re
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.colors import red
 import os.path
-import os
 import datetime
 import configparser
 from pathlib import Path
 import sys
 import macos_tags
+import os
+import re
+import datetime
+import pandas as pd
 
 
 def mac_set_file_creation_date(year, month, day, full_filepath):
@@ -111,7 +113,7 @@ for filename in os.listdir(path):
                 new_pdf_writer = PyPDF2.PdfWriter()
                 original_page = original_pdf_reader.pages[0]
                 # don't know what that was for...
-                original_page.merge_page(original_pdf_reader.pages[0])
+                #original_page.merge_page(original_pdf_reader.pages[0])
                 original_page.compress_content_streams()
 
                 # add first stamp to the page
@@ -163,3 +165,28 @@ for filename in os.listdir(path):
             macos_tags.remove_all(path + "/" + filename)
             for tag in tags:
                 macos_tags.add(tag, file=path + "/" + filename)
+
+if config.getboolean('directory', 'create_excel'):
+    # create empty dataframe to store the extracted information
+    df = pd.DataFrame(columns=['date', 'number'])
+
+    # loop through all already paginated pdf files in directory
+    for pdf_file in os.listdir(path):
+        if pdf_file.endswith('.pdf'):
+            # extract date and number from filename
+            # regular expression pattern to extract date and number from filename
+            pattern = re.compile(r'(\d+)#_(\d{4})-(\d{2})-(\d{2})--(.*)__(.*)')
+            match = re.search(pattern, remove_extension(pdf_file))
+            if match:
+                date_str = f"{match.group(2)}-{match.group(3)}-{match.group(4)}"
+                date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+                title = match.group(5)
+                tags = match.group(6)
+                number = match.group(1)
+                # add extracted information to dataframe
+                df_new_row = pd.DataFrame({'date': date, 'number': number, 'title': title, 'tags':  tags,
+                                           'file': pdf_file}, index=[0])
+                df = pd.concat([df, df_new_row])
+
+    # write dataframe to excel file
+    df.to_excel(path + "/" + config['directory']['excel_filename'], index=False)
