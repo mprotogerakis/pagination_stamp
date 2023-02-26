@@ -5,6 +5,9 @@ import re
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.colors import red
+import os.path
+import os
+import datetime
 
 path = "/Users/proto/Dropbox/Familienbereich/_Ablage_Inbox/2023"
 
@@ -33,13 +36,25 @@ print ("File Counter Start: " + str(file_counter))
 for filename in os.listdir(path):
     if filename.endswith(".pdf"):
         pattern = re.compile(r'(\d+)#_(\d{4})-(\d{2})-(\d{2})--.*')
-        # those have already been processed
+        # those have already been processed will match
         match = re.search(pattern, filename)
+
+        if match:
+            # re-set the file creation date, do nothing else
+            new_file_date = datetime.datetime(int(match.group(2)), int(match.group(3)), int(match.group(4)), 0, 0, 0)
+            os.system('SetFile -d "{}" {}'.format(new_file_date.strftime('%m/%d/%Y %H:%M:%S'), path + "/" + filename))
+
         if not match:
             pattern = re.compile(r"(\d{4})-(\d{2})-(\d{2}).*((_rechnung)|(steuer)|(beleg)).*")
             match = re.search(pattern, filename)
             if match:
                 print("Processing File: " + filename)
+                # re-set the file creation date
+                new_file_date = datetime.datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)), 0, 0,
+                                                  0)
+                os.system(
+                    'SetFile -d "{}" {}'.format(new_file_date.strftime('%m/%d/%Y %H:%M:%S'), path + "/" + filename))
+
                 pdf_file = open(path + "/" + filename, "rb")
                 pdf_reader = PyPDF2.PdfReader(pdf_file, strict=False)
                 pdf_writer = PyPDF2.PdfWriter()
@@ -75,5 +90,15 @@ for filename in os.listdir(path):
                 pdf_file.close()
                 output_file.close()
                 file_counter += 1
+            else:
+                pattern = re.compile(r"(\d{4})-(\d{2})-(\d{2}).*")
+                match = re.search(pattern, filename)
+                if match:
+                    print("Modifying only creation time of file: " + filename)
+                    # re-set the file creation date
+                    new_file_date = datetime.datetime(int(match.group(1)), int(match.group(2)), int(match.group(3)), 0, 0,
+                                                      0)
+                    os.system(
+                        'SetFile -d "{}" {}'.format(new_file_date.strftime('%m/%d/%Y %H:%M:%S'), path + "/" + filename))
 
 print("All PDF files processed!")
