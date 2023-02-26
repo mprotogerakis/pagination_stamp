@@ -100,7 +100,8 @@ for filename in os.listdir(path):
                                            int(match_paginated_before.group(4)), path + "/" + filename)
         else:
             # those have not been paginated before
-            match_valid_date = regex_matches(r"(\d{4})-(\d{2})-(\d{2}).*((_rechnung)|(steuer)|(beleg)).*", filename)
+            match_valid_date = regex_matches(r"(\d{4})-(\d{2})-(\d{2}).*"+str(config['directory']['regex_pagination'])+
+                                             ".*", filename)
             if match_valid_date:
                 # those have not been paginated before but contain a valid date scheme and one of the terms that
                 # allow  paginating (_rechnung)|(steuer)|(beleg)
@@ -153,6 +154,7 @@ for filename in os.listdir(path):
                         mac_set_file_creation_date(int(match_paginated_before.group(1)),
                                                    int(match_paginated_before.group(2)),
                                                    int(match_paginated_before.group(3)), path + "/" + filename)
+# rewriting macos tags to all pdf files in directory from file name
 for filename in os.listdir(path):
     if filename.endswith(".pdf"):
         if config.getboolean('directory', 'macos_tags'):
