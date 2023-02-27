@@ -4,7 +4,6 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.colors import red
 import os.path
-import datetime
 import configparser
 from pathlib import Path
 import sys
@@ -20,26 +19,23 @@ def mac_set_file_creation_date(year, month, day, full_filepath):
     os.system('SetFile -d "{}" {}'.format(file_date_to_be_set.strftime('%m/%d/%Y %H:%M:%S'), full_filepath))
 
 
-def create_stamp_page_filename(text):
+def create_stamp_page(x, y, fontsize, text):
     local_packet = io.BytesIO()
     local_can = canvas.Canvas(local_packet, pagesize=A4)
-    local_can.setFont("Helvetica", 8)
+    local_can.setFont("Helvetica", fontsize)
     local_can.setFillColor(red)
-    local_can.drawString(10, 10, text)
+    local_can.drawString(x, y, text)
     local_can.save()
     local_new_pdf_page = PyPDF2.PdfReader(local_packet)
     return local_new_pdf_page
+
+
+def create_stamp_page_filename(text):
+    return create_stamp_page(10, 10, 8, text)
 
 
 def create_stamp_page_file_counter(text):
-    local_packet = io.BytesIO()
-    local_can = canvas.Canvas(local_packet, pagesize=A4)
-    local_can.setFont("Helvetica", 14)
-    local_can.setFillColor(red)
-    local_can.drawString(450, 800, text)
-    local_can.save()
-    local_new_pdf_page = PyPDF2.PdfReader(local_packet)
-    return local_new_pdf_page
+    return create_stamp_page(450, 800, 14, text)
 
 
 def remove_extension(file_name):
@@ -48,13 +44,12 @@ def remove_extension(file_name):
 
 def find_max_pagination_number(local_path):
     # find out maximum used file_counter so far in this directory
-    global filename
     local_file_counter = 0
-    for filename in os.listdir(local_path):
-        if filename.endswith(".pdf"):
+    for iter_filename in os.listdir(local_path):
+        if iter_filename.endswith(".pdf"):
             local_pattern = re.compile(r'(\d+)#_(\d{4})-(\d{2})-(\d{2})--.*')
             # those have already been processed
-            local_match = re.search(local_pattern, filename)
+            local_match = re.search(local_pattern, iter_filename)
             if local_match:
                 number = int(local_match.group(1))
                 if number > local_file_counter:
@@ -65,6 +60,13 @@ def find_max_pagination_number(local_path):
     return local_file_counter
 
 
+def regex_matches(regex, local_filename):
+    local_pattern = re.compile(regex)
+    # those have already been processed will match
+    return re.search(local_pattern, local_filename)
+
+
+# main starts here
 if not (len(sys.argv) == 2):
     raise Exception("Please provide a directory path as a command line argument." + str(len(sys.argv)))
 
@@ -84,13 +86,6 @@ config.read(config_file)
 
 file_counter = find_max_pagination_number(path)
 
-
-def regex_matches(regex, local_filename):
-    local_pattern = re.compile(regex)
-    # those have already been processed will match
-    return re.search(local_pattern, local_filename)
-
-
 for filename in os.listdir(path):
     if filename.endswith(".pdf"):
         match_paginated_before = regex_matches(r'(\d+)#_(\d{4})-(\d{2})-(\d{2})--.*', filename)
@@ -102,9 +97,10 @@ for filename in os.listdir(path):
                                            int(match_paginated_before.group(4)), path + "/" + filename)
         else:
             # those have not been paginated before
-            match_valid_date = regex_matches(r"(\d{4})-(\d{2})-(\d{2}).*"+str(config['directory']['regex_pagination'])+
-                                             ".*", filename)
-            if match_valid_date:
+            match_to_be_paginated = regex_matches(
+                r"(\d{4})-(\d{2})-(\d{2}).*" + str(config['directory']['regex_pagination']) +
+                ".*", filename)
+            if match_to_be_paginated:
                 # those have not been paginated before but contain a valid date scheme and one of the terms that
                 # allow  paginating (_rechnung)|(steuer)|(beleg)
                 print("Paginating " + filename)
@@ -113,7 +109,7 @@ for filename in os.listdir(path):
                 new_pdf_writer = PyPDF2.PdfWriter()
                 original_page = original_pdf_reader.pages[0]
                 # don't know what that was for...
-                #original_page.merge_page(original_pdf_reader.pages[0])
+                # original_page.merge_page(original_pdf_reader.pages[0])
                 original_page.compress_content_streams()
 
                 # add first stamp to the page
@@ -142,13 +138,13 @@ for filename in os.listdir(path):
                 original_pdf_file.close()
                 output_file.close()
                 if config.getboolean('directory', 'mac_set_file_creation_dates'):
-                    mac_set_file_creation_date(int(match_valid_date.group(1)),
-                                               int(match_valid_date.group(2)),
-                                               int(match_valid_date.group(3)), path + "/" + str(file_counter) +
+                    mac_set_file_creation_date(int(match_to_be_paginated.group(1)),
+                                               int(match_to_be_paginated.group(2)),
+                                               int(match_to_be_paginated.group(3)), path + "/" + str(file_counter) +
                                                "#_" + remove_extension(filename) + ".pdf")
                 file_counter += 1
             else:
-                # process those files that have not been matched before but have a valid date in the filename
+                # process those files that have not matched to be paginated before but have a valid date in the filename
                 match_valid_date = regex_matches(r"(\d{4})-(\d{2})-(\d{2}).*", filename)
                 if match_valid_date:
                     # re-set the file creation date
@@ -156,10 +152,11 @@ for filename in os.listdir(path):
                         mac_set_file_creation_date(int(match_valid_date.group(1)),
                                                    int(match_valid_date.group(2)),
                                                    int(match_valid_date.group(3)), path + "/" + filename)
+
 # rewriting macos tags to all pdf files in directory from file name
-for filename in os.listdir(path):
-    if filename.endswith(".pdf"):
-        if config.getboolean('directory', 'macos_tags'):
+if config.getboolean('directory', 'macos_tags'):
+    for filename in os.listdir(path):
+        if filename.endswith(".pdf"):
             # for all pdf file add macos tags
             tags = remove_extension(filename).split("__")[1].split("_")
             macos_tags.remove_all(path + "/" + filename)
@@ -182,9 +179,9 @@ if config.getboolean('directory', 'create_excel'):
                 date = datetime.datetime.strptime(date_str, '%Y-%m-%d')
                 title = match.group(5)
                 tags = match.group(6)
-                number = match.group(1)
+                pagination_number = match.group(1)
                 # add extracted information to dataframe
-                df_new_row = pd.DataFrame({'date': date, 'number': number, 'title': title, 'tags':  tags,
+                df_new_row = pd.DataFrame({'date': date, 'number': pagination_number, 'title': title, 'tags': tags,
                                            'file': pdf_file}, index=[0])
                 df = pd.concat([df, df_new_row])
 
