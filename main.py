@@ -66,7 +66,7 @@ def find_max_pagination_number(local_path):
 
 
 if not (len(sys.argv) == 2):
-    raise Exception("Please provide a directory path as a command line argument.")
+    raise Exception("Please provide a directory path as a command line argument." + str(len(sys.argv)))
 
 path = sys.argv[1]
 
@@ -149,13 +149,13 @@ for filename in os.listdir(path):
                 file_counter += 1
             else:
                 # process those files that have not been matched before but have a valid date in the filename
-                match_paginated_before = regex_matches(r"(\d{4})-(\d{2})-(\d{2}).*", filename)
-                if match_paginated_before:
+                match_valid_date = regex_matches(r"(\d{4})-(\d{2})-(\d{2}).*", filename)
+                if match_valid_date:
                     # re-set the file creation date
                     if config.getboolean('directory', 'mac_set_file_creation_dates'):
-                        mac_set_file_creation_date(int(match_paginated_before.group(1)),
-                                                   int(match_paginated_before.group(2)),
-                                                   int(match_paginated_before.group(3)), path + "/" + filename)
+                        mac_set_file_creation_date(int(match_valid_date.group(1)),
+                                                   int(match_valid_date.group(2)),
+                                                   int(match_valid_date.group(3)), path + "/" + filename)
 # rewriting macos tags to all pdf files in directory from file name
 for filename in os.listdir(path):
     if filename.endswith(".pdf"):
